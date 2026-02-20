@@ -8,9 +8,35 @@
     <p>Masukkan MCC, MNC, LAC dan CID sesuai jaringan</p>
 </div>
 
+<!-- Token Selection Card -->
+<div class="card" style="margin-bottom: 20px; background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+        <h3 style="font-size: 15px; font-weight: 600; color: #1e40af; margin: 0;">
+            🔑 Select API Token
+        </h3>
+        <a href="{{ route('tokens') }}" style="font-size: 12px; color: #3b82f6; text-decoration: none; font-weight: 600;">
+            Kelola Tokens →
+        </a>
+    </div>
+    
+    <div style="display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: center;">
+        <div class="form-group" style="margin-bottom: 0;">
+            <select id="tokenSelect" name="token_id" style="font-family: 'Courier New', monospace; font-size: 13px;">
+                <option value="">-- Pilih Token --</option>
+            </select>
+        </div>
+        <div id="selectedTokenUsage" style="background: #fff; padding: 12px 20px; border-radius: 8px; font-weight: 600; color: #1e40af; font-size: 14px; border: 2px solid #bfdbfe; min-width: 100px; text-align: center;">
+            <span id="usageCount">-</span>
+            <div style="font-size: 11px; color: #64748b; font-weight: 500; margin-top: 2px;">usage</div>
+        </div>
+    </div>
+</div>
+
 <div class="card">
     <form id="lookupForm">
         @csrf
+        
+        <input type="hidden" id="selectedTokenId" name="token_id" value="">
         
         <div class="form-group">
             <label for="radioType">Request (Radio) <span style="color: #ef4444;">*</span></label>
@@ -28,28 +54,28 @@
 
         <div class="form-group">
             <label for="mcc">MCC (Mobile Country Code) <span style="color: #ef4444;">*</span></label>
-            <input type="number" id="mcc" name="mcc" placeholder="Contoh Indonesia: 510" required min="1" max="999">
+            <input type="text" id="mcc" name="mcc" placeholder="Contoh Indonesia: 510" required>
             <div class="form-hint">Contoh Indonesia: 510</div>
             <div class="error-message" id="error-mcc"></div>
         </div>
 
         <div class="form-group">
             <label for="mnc">MNC (Mobile Network Code) <span style="color: #ef4444;">*</span></label>
-            <input type="number" id="mnc" name="mnc" placeholder="Contoh Telkomsel: 10" required min="0" max="999">
+            <input type="text" id="mnc" name="mnc" placeholder="Contoh Telkomsel: 10" required>
             <div class="form-hint">Contoh Telkomsel: 10, XL: 11, Indosat: 01</div>
             <div class="error-message" id="error-mnc"></div>
         </div>
 
         <div class="form-group">
             <label for="lac">LAC (Location Area Code) <span style="color: #ef4444;">*</span></label>
-            <input type="number" id="lac" name="lac" placeholder="Contoh: 21071" required min="0">
+            <input type="text" id="lac" name="lac" placeholder="Contoh: 21071" required>
             <div class="form-hint">LAC atau TAC untuk LTE</div>
             <div class="error-message" id="error-lac"></div>
         </div>
 
         <div class="form-group">
             <label for="cid">CID (Cell ID) <span style="color: #ef4444;">*</span></label>
-            <input type="number" id="cid" name="cid" placeholder="Contoh: 9365762" required min="0">
+            <input type="text" id="cid" name="cid" placeholder="Contoh: 9365762" required>
             <div class="form-hint">Cell ID atau ECI untuk LTE</div>
             <div class="error-message" id="error-cid"></div>
         </div>
@@ -450,10 +476,12 @@
     let marker = null;
     let circle = null;
     let isSubmitting = false;
+    let tokensData = [];
 
     $(document).ready(function() {
         initializeMap();
         setupFormValidation();
+        loadTokens();
         
         $('#lookupForm').on('submit', function(e) {
             e.preventDefault();
@@ -462,6 +490,55 @@
             }
         });
     });
+
+    // Load available tokens
+    function loadTokens() {
+        $.ajax({
+            url: '{{ route("tokens.active") }}',
+            method: 'GET',
+            success: function(response) {
+                if (response.success && response.data.length > 0) {
+                    tokensData = response.data;
+                    
+                    const $select = $('#tokenSelect');
+                    response.data.forEach(token => {
+                        $select.append(`
+                            <option value="${token.id}" data-usage="${token.usage_count}">
+                                ${token.token} (${token.usage_count})
+                            </option>
+                        `);
+                    });
+                }
+            }
+        });
+    }
+
+    // Update usage display when token is selected
+$('#tokenSelect').on('change', function() {
+    const selectedId = $(this).val();
+    $('#selectedTokenId').val(selectedId);
+    
+    if (selectedId) {
+        // RELOAD dari server untuk data terbaru
+        $.ajax({
+            url: '{{ route("tokens.active") }}',
+            method: 'GET',
+            success: function(response) {
+                if (response.success) {
+                    tokensData = response.data;
+                    const selectedToken = tokensData.find(t => t.id == selectedId);
+                    if (selectedToken) {
+                        $('#usageCount').text(selectedToken.usage_count);
+                        $('#selectedTokenUsage').css('border-color', '#3b82f6');
+                    }
+                }
+            }
+        });
+    } else {
+        $('#usageCount').text('-');
+        $('#selectedTokenUsage').css('border-color', '#bfdbfe');
+    }
+});
 
     function initializeMap() {
         try {
@@ -492,8 +569,9 @@
             
             clearFieldError(fieldName);
             
-            if (value && parseInt(value) < 0) {
-                showFieldError(fieldName, 'Nilai tidak boleh negatif');
+            // Allow empty or valid numbers
+            if (value !== '' && (!/^\d+$/.test(value) || parseInt(value) < 0)) {
+                showFieldError(fieldName, 'Hanya angka positif yang diperbolehkan');
                 field.addClass('error').removeClass('success');
             } else if (value) {
                 field.addClass('success').removeClass('error');
@@ -531,20 +609,20 @@
             isValid = false;
         }
 
-        if (!mnc || parseInt(mnc) < 0 || parseInt(mnc) > 999) {
+        if (mnc === '' || parseInt(mnc) < 0 || parseInt(mnc) > 999) {
             showFieldError('mnc', 'MNC harus antara 0-999');
             $('#mnc').addClass('error');
             isValid = false;
         }
 
-        if (!lac || parseInt(lac) < 0) {
-            showFieldError('lac', 'LAC harus diisi dengan nilai positif');
+        if (lac === '' || parseInt(lac) < 0) {
+            showFieldError('lac', 'LAC harus diisi dengan nilai 0 atau positif');
             $('#lac').addClass('error');
             isValid = false;
         }
 
-        if (!cid || parseInt(cid) < 0) {
-            showFieldError('cid', 'CID harus diisi dengan nilai positif');
+        if (cid === '' || parseInt(cid) < 0) {
+            showFieldError('cid', 'CID harus diisi dengan nilai 0 atau positif');
             $('#cid').addClass('error');
             isValid = false;
         }
@@ -593,6 +671,7 @@
             mnc: $('#mnc').val(),
             lac: $('#lac').val(),
             cid: $('#cid').val(),
+            token_id: $('#selectedTokenId').val()
         };
 
         const submitBtn = $('#submitBtn');
@@ -609,24 +688,51 @@
             data: formData,
             timeout: 30000,
             success: function(response) {
-                hideLoading();
-                isSubmitting = false;
-                submitBtn.prop('disabled', false);
-                btnText.text('Cari Lokasi BTS');
+    hideLoading();
+    isSubmitting = false;
+    submitBtn.prop('disabled', false);
+    btnText.text('Cari Lokasi BTS');
 
-                if (response.success && response.data) {
-                    displayResult(response.data, formData);
-                    showAlert('success', '✓ ' + response.message);
-                    
-                    setTimeout(() => {
-                        $('html, body').animate({
-                            scrollTop: $('#resultSection').offset().top - 100
-                        }, 500);
-                    }, 300);
-                } else {
-                    showError(response.message || 'Lokasi tidak ditemukan');
-                }
-            },
+    if (response.success && response.data) {
+        displayResult(response.data, formData);
+        
+        // TAMPILKAN INFO TOKEN YANG DIGUNAKAN
+        if (response.token_info) {
+            console.log('✅ TOKEN DIGUNAKAN:', response.token_info);
+            console.log('📊 Usage Count Before:', response.token_info.usage_count_before);
+            console.log('📊 Usage Count After:', response.token_info.usage_count_after);
+            
+            showAlert('success', `✓ ${response.message} | Token: ${response.token_info.token} | Usage: ${response.token_info.usage_count_after}`);
+        } else {
+            console.log('ℹ️ Menggunakan default token dari .env');
+            showAlert('success', '✓ ' + response.message + ' | Token: Default (.env)');
+        }
+        
+        // RELOAD TOKEN DATA DARI SERVER
+        const usedTokenId = $('#selectedTokenId').val();
+        if (usedTokenId && response.token_info) {
+            // Update counter dengan data dari server
+            $('#usageCount').text(response.token_info.usage_count_after);
+            
+            // Update dropdown
+            const tokenInData = tokensData.find(t => t.id == usedTokenId);
+            if (tokenInData) {
+                tokenInData.usage_count = response.token_info.usage_count_after;
+                $(`#tokenSelect option[value="${usedTokenId}"]`).text(
+                    `${tokenInData.token} (${response.token_info.usage_count_after})`
+                );
+            }
+        }
+        
+        setTimeout(() => {
+            $('html, body').animate({
+                scrollTop: $('#resultSection').offset().top - 100
+            }, 500);
+        }, 300);
+    } else {
+        showError(response.message || 'Lokasi tidak ditemukan');
+    }
+},
             error: function(xhr, status, error) {
                 hideLoading();
                 isSubmitting = false;

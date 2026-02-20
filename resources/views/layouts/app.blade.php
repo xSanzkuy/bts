@@ -437,6 +437,10 @@
         <span>📡</span>
         <span>Sector Calculator</span>
     </a>
+    <a href="{{ route('tokens') }}" class="menu-item {{ request()->routeIs('tokens') ? 'active' : '' }}">
+    <span>🔑</span>
+    <span>Token Management</span>
+</a>
                 <a href="{{ route('history') }}" class="menu-item {{ request()->routeIs('history') ? 'active' : '' }}">
                     <span>📋</span>
                     <span>History</span>
